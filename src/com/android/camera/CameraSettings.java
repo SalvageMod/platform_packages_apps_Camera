@@ -17,6 +17,7 @@
 package com.android.camera;
 
 import android.app.Activity;
+import java.util.Arrays;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
@@ -24,6 +25,8 @@ import android.hardware.Camera.CameraInfo;
 import android.hardware.Camera.Parameters;
 import android.hardware.Camera.Size;
 import android.media.CamcorderProfile;
+import java.util.Set;
+import java.util.TreeSet;
 import android.util.Log;
 
 import java.util.ArrayList;
@@ -75,12 +78,14 @@ public class CameraSettings {
     private final Context mContext;
     private final Parameters mParameters;
     private final CameraInfo[] mCameraInfo;
+    private final int mCameraId;
 
     public CameraSettings(Activity activity, Parameters parameters,
-                          CameraInfo[] cameraInfo) {
+                          CameraInfo[] cameraInfo, int cameraId) {
         mContext = activity;
         mParameters = parameters;
         mCameraInfo = cameraInfo;
+        mCameraId = cameraId;
     }
 
     public PreferenceGroup getPreferenceGroup(int preferenceRes) {
@@ -172,8 +177,16 @@ public class CameraSettings {
                     whiteBalance, mParameters.getSupportedWhiteBalance());
         }
         if (colorEffect != null) {
-            filterUnsupportedOptions(group,
-                    colorEffect, mParameters.getSupportedColorEffects());
+            if (isFrontFacingCamera()) {
+                String supportedEffects = mContext.getResources().getString(R.string.ffc_supportedEffects);
+                if (supportedEffects != null && supportedEffects.length() > 0) {
+                    filterUnsupportedOptions(group, colorEffect,
+                            Arrays.asList(supportedEffects.split(",")));
+                }
+            } else {
+                filterUnsupportedOptions(group,
+                        colorEffect, mParameters.getSupportedColorEffects());
+            }
         }
         if (sceneMode != null) {
             filterUnsupportedOptions(group,
@@ -184,8 +197,12 @@ public class CameraSettings {
                     flashMode, mParameters.getSupportedFlashModes());
         }
         if (focusMode != null) {
-            filterUnsupportedOptions(group,
-                    focusMode, mParameters.getSupportedFocusModes());
+            if (isFrontFacingCamera() && !mContext.getResources().getBoolean(R.bool.ffc_canFocus)) {
+                filterUnsupportedOptions(group, focusMode, new ArrayList<String>());
+            } else {
+                filterUnsupportedOptions(group,
+                        focusMode, mParameters.getSupportedFocusModes());
+            }
         }
         if (videoFlashMode != null) {
             filterUnsupportedOptions(group,
@@ -388,5 +405,20 @@ public class CameraSettings {
         Editor editor = pref.edit();
         editor.putString(KEY_CAMERA_ID, Integer.toString(cameraId));
         editor.apply();
+    }
+
+    public static boolean isZoomSupported(Context context, int cameraId) {
+        return CameraHolder.instance().getCameraInfo()[cameraId].facing != CameraInfo.CAMERA_FACING_FRONT
+                || context.getResources().getBoolean(R.bool.ffc_canZoom);
+    }
+
+    public static void dumpParameters(Parameters params) {
+        Set<String> sortedParams = new TreeSet<String>();
+        sortedParams.addAll(Arrays.asList(params.flatten().split(";")));
+        Log.d(TAG, "Parameters: " + sortedParams.toString());
+    }
+
+    private boolean isFrontFacingCamera() {
+        return mCameraInfo[mCameraId].facing == CameraInfo.CAMERA_FACING_FRONT;
     }
 }
